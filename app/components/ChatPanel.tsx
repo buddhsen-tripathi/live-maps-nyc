@@ -9,6 +9,7 @@ import {
   SparkleIcon,
   ArrowClockwiseIcon,
   ArrowUpRightIcon,
+  MapPinIcon,
 } from "@phosphor-icons/react";
 import { ChatMessage } from "./ChatMessage";
 import { Icon } from "./Icon";
@@ -50,18 +51,54 @@ const SUGGESTIONS: { title: string; prompt: string; badge?: string }[] = [
 export function ChatPanel({ onMapCommand, onTurnStart, onClose }: Props) {
   const [input, setInput] = useState("");
   const [selectedMode, setSelectedMode] = useState<string | null>(null);
+  const [userLocation, setUserLocation] = useState<
+    { lat: number; lng: number } | null
+  >(null);
+  const [locStatus, setLocStatus] = useState<"idle" | "pending" | "denied">(
+    "idle",
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  // Ref mirrors selectedMode so the transport's body fn always reads the latest.
+  // Refs mirror state so the transport's body fn always reads the latest.
   const modeRef = useRef<string | null>(null);
   modeRef.current = selectedMode;
+  const locationRef = useRef<{ lat: number; lng: number } | null>(null);
+  locationRef.current = userLocation;
 
-  // Per-mount transport: body fn returns the live mode on each request.
+  const requestLocation = () => {
+    if (userLocation) {
+      // Toggle off
+      setUserLocation(null);
+      setLocStatus("idle");
+      return;
+    }
+    if (!navigator.geolocation) {
+      setLocStatus("denied");
+      return;
+    }
+    setLocStatus("pending");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserLocation({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        });
+        setLocStatus("idle");
+      },
+      () => setLocStatus("denied"),
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 60_000 },
+    );
+  };
+
+  // Per-mount transport: body fn returns the live mode + location each request.
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
         api: "/api/agent",
-        body: () => ({ mode: modeRef.current ?? undefined }),
+        body: () => ({
+          mode: modeRef.current ?? undefined,
+          location: locationRef.current ?? undefined,
+        }),
       }),
     [],
   );
@@ -129,6 +166,32 @@ export function ChatPanel({ onMapCommand, onTurnStart, onClose }: Props) {
             Powered by live NYC data
           </p>
         </div>
+        <button
+          type="button"
+          onClick={requestLocation}
+          aria-label={
+            userLocation ? "Stop sharing location" : "Share my location"
+          }
+          title={
+            userLocation
+              ? "Sharing your location with the agent"
+              : locStatus === "denied"
+                ? "Location denied — try again or check browser permissions"
+                : "Share your location for 'near me' queries"
+          }
+          aria-pressed={!!userLocation}
+          className={[
+            "rounded p-1.5 transition-colors hover:bg-muted",
+            userLocation
+              ? "text-accent"
+              : locStatus === "denied"
+                ? "text-danger"
+                : "text-muted-foreground hover:text-foreground",
+            locStatus === "pending" ? "animate-pulse" : "",
+          ].join(" ")}
+        >
+          <MapPinIcon size={14} weight={userLocation ? "fill" : "bold"} />
+        </button>
         {!isEmpty && (
           <button
             type="button"

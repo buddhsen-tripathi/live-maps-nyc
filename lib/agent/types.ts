@@ -2,10 +2,13 @@ import type { LayerKind, Paint } from "@/lib/categories/types";
 
 // ── Map commands emitted by agent tools, consumed by Workspace ──
 
-/** Optional spatial filter — only show features within radius of center. */
+/** Optional spatial + property filter on a layer. */
 export type LayerFilter = {
-  center: [number, number]; // [lng, lat]
-  radiusMeters: number;
+  /** Spatial: only features within radius of center. */
+  center?: [number, number]; // [lng, lat]
+  radiusMeters?: number;
+  /** Property: equality match against a single feature property. */
+  propertyMatch?: { field: string; value: string };
 };
 
 export type AddLayerCommand = {

@@ -34,18 +34,50 @@ export const addMapLayer = tool({
       .describe(
         "Search radius in meters (default 800 ≈ a 10-minute walk). Only used when nearLng + nearLat are set.",
       ),
+    propertyField: z
+      .string()
+      .optional()
+      .describe(
+        "Optional feature property name to filter on (e.g. 'cuisine_description' for restaurants, 'complaint_type' for 311). Pair with propertyValue.",
+      ),
+    propertyValue: z
+      .string()
+      .optional()
+      .describe(
+        "Value to match propertyField against. Equality match, applied server-side for Socrata layers when possible. E.g. 'Indian', 'Noise - Residential'.",
+      ),
   }),
-  execute: async ({ categoryId, options, nearLng, nearLat, nearRadiusMeters }) => {
+  execute: async ({
+    categoryId,
+    options,
+    nearLng,
+    nearLat,
+    nearRadiusMeters,
+    propertyField,
+    propertyValue,
+  }) => {
     const cat = CATEGORIES_BY_ID.get(categoryId);
     if (!cat) {
       return { added: false, error: `Unknown category: ${categoryId}` };
     }
 
+    const hasNear = nearLng != null && nearLat != null;
+    const hasProp =
+      typeof propertyField === "string" &&
+      propertyField.length > 0 &&
+      typeof propertyValue === "string" &&
+      propertyValue.length > 0;
+
     const filter =
-      nearLng != null && nearLat != null
+      hasNear || hasProp
         ? {
-            center: [nearLng, nearLat] as [number, number],
-            radiusMeters: nearRadiusMeters ?? 800,
+            ...(hasNear && {
+              center: [nearLng, nearLat] as [number, number],
+              radiusMeters: nearRadiusMeters ?? 800,
+            }),
+            ...(hasProp && {
+              propertyMatch: { field: propertyField!, value: propertyValue! },
+            }),
           }
         : undefined;
 

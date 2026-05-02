@@ -28,8 +28,12 @@ export type ActiveLayer = {
   refresh: number;
   /** Tween point positions between refreshes (per-feature ID for matching) */
   tween?: { idKey: string; durationMs?: number };
-  /** Spatial filter — only render features within radius of center. */
-  filter?: { center: [number, number]; radiusMeters: number };
+  /** Spatial + property filter applied to this layer's features. */
+  filter?: {
+    center?: [number, number];
+    radiusMeters?: number;
+    propertyMatch?: { field: string; value: string };
+  };
 };
 
 type Tween = {
@@ -357,6 +361,13 @@ function syncLayers(
     for (const [k, v] of Object.entries(layer.options)) {
       url.searchParams.set(k, String(v));
     }
+    // Server-side property filter (Socrata only). Spatial filter still happens
+    // client-side after fetch because most non-Socrata layers can't filter by
+    // bbox at the source.
+    if (layer.filter?.propertyMatch) {
+      url.searchParams.set("match_field", layer.filter.propertyMatch.field);
+      url.searchParams.set("match_value", layer.filter.propertyMatch.value);
+    }
 
     const loadData = () =>
       fetch(url, { signal: abort.signal })
@@ -364,10 +375,15 @@ function syncLayers(
         .then((body: { geojson: GeoJSON.FeatureCollection }) => {
           if (!map.getStyle()) return;
           // Apply spatial filter (e.g. "citi-bikes near Union Square") before
-          // anything else. Empty result still renders (UI shows zero matches).
-          const data = layer.filter
-            ? filterByDistance(body.geojson, layer.filter)
-            : body.geojson;
+          // anything else. Property filter is already applied server-side via
+          // match_field/value query params. Empty result still renders.
+          const data =
+            layer.filter?.center && layer.filter.radiusMeters
+              ? filterByDistance(body.geojson, {
+                  center: layer.filter.center,
+                  radiusMeters: layer.filter.radiusMeters,
+                })
+              : body.geojson;
           const sid = sourceId(layer.id);
           const src = map.getSource(sid) as maplibregl.GeoJSONSource | undefined;
           const isFirstLoad = !src;

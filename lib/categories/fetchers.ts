@@ -43,6 +43,19 @@ async function fetchSocrata(
   if (options.status === "all" && where?.includes("status=")) {
     where = undefined;
   }
+  // Agent-driven property filter: only Socrata-safe identifier characters and
+  // single-quote escaped value. Combined with the dataset's where via AND.
+  const matchField = options.match_field;
+  const matchValue = options.match_value;
+  if (
+    typeof matchField === "string" &&
+    typeof matchValue === "string" &&
+    /^[a-z_][a-z0-9_]*$/i.test(matchField)
+  ) {
+    const safeValue = String(matchValue).replace(/'/g, "''");
+    const clause = `${matchField}='${safeValue}'`;
+    where = where ? `(${where}) AND (${clause})` : clause;
+  }
   if (where) url.searchParams.set("$where", where);
   if (ds.select) url.searchParams.set("$select", ds.select);
 

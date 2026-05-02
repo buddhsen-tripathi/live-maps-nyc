@@ -13,7 +13,7 @@ import {
   NavigationArrowIcon,
   SparkleIcon,
 } from "@phosphor-icons/react";
-import type { MapCommand } from "@/lib/agent/types";
+import type { LayerFilter, MapCommand } from "@/lib/agent/types";
 
 type Props = {
   message: UIMessage;
@@ -172,9 +172,7 @@ function ToolBlock({
           action: "addLayer",
           categoryId: result.categoryId as string,
           options: (result.options as Record<string, string | boolean>) ?? {},
-          filter: result.filter as
-            | { center: [number, number]; radiusMeters: number }
-            | undefined,
+          filter: result.filter as LayerFilter | undefined,
         },
         tool.toolCallId,
       );
@@ -297,6 +295,7 @@ function ToolStatusCard({
 type EventItem = {
   name: string;
   description?: string;
+  date?: string; // YYYY-MM-DD
   time?: string;
   venue?: string;
   neighborhood?: string;
@@ -354,9 +353,9 @@ function EventCard({ ev }: { ev: EventItem }) {
                 {ev.category}
               </span>
             )}
-            {ev.time && (
+            {(ev.date || ev.time) && (
               <span className="text-[10.5px] font-medium text-accent">
-                {ev.time}
+                {[formatEventDate(ev.date), ev.time].filter(Boolean).join(" · ")}
               </span>
             )}
           </div>
@@ -476,4 +475,19 @@ const TOOL_LABELS: Record<string, string> = {
   fetchDatasetDirect: "Fetched dataset",
   summarizeFeatures: "Analyzed data",
   searchEvents: "Searching events",
+  getDirections: "Built directions",
 };
+
+/** Pretty-print a YYYY-MM-DD into "Sat Nov 15" — null/empty input returns "". */
+function formatEventDate(date: string | undefined): string {
+  if (!date) return "";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(date);
+  if (!m) return date;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(d);
+}
