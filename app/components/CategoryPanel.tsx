@@ -77,7 +77,7 @@ export function CategoryPanel({
         </div>
         <div className="min-w-0 flex-1 leading-tight">
           <h1 className="text-[13px] font-semibold tracking-tight text-foreground">
-            Block Maps
+            NYC Bestie
           </h1>
           <p className="text-[11px] text-muted-foreground">
             {categories.length} maps · {activeCount} active
