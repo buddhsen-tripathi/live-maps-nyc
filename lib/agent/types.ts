@@ -2,10 +2,17 @@ import type { LayerKind, Paint } from "@/lib/categories/types";
 
 // ── Map commands emitted by agent tools, consumed by Workspace ──
 
+/** Optional spatial filter — only show features within radius of center. */
+export type LayerFilter = {
+  center: [number, number]; // [lng, lat]
+  radiusMeters: number;
+};
+
 export type AddLayerCommand = {
   action: "addLayer";
   categoryId: string;
   options?: Record<string, string | boolean>;
+  filter?: LayerFilter;
 };
 
 export type RemoveLayerCommand = {
@@ -28,12 +35,39 @@ export type FitBoundsCommand = {
   bounds: [[number, number], [number, number]]; // [sw, ne]
 };
 
+/** A pin to drop on the map for agent results that don't fit the layer model. */
+export type AgentMarker = {
+  id: string;
+  lng: number;
+  lat: number;
+  title: string;
+  subtitle?: string;
+  description?: string;
+  url?: string;
+  category?: string;
+};
+
+export type ShowMarkersCommand = {
+  action: "showMarkers";
+  markers: AgentMarker[];
+  /** A label for the marker group (e.g. "Events tonight"). */
+  label?: string;
+  /** If true, fits the map to the marker bounds. Defaults to true. */
+  fit?: boolean;
+};
+
+export type ClearMarkersCommand = {
+  action: "clearMarkers";
+};
+
 export type MapCommand =
   | AddLayerCommand
   | RemoveLayerCommand
   | RemoveAllLayersCommand
   | FlyToCommand
-  | FitBoundsCommand;
+  | FitBoundsCommand
+  | ShowMarkersCommand
+  | ClearMarkersCommand;
 
 // ── Tool output shapes (used by frontend to detect map commands) ──
 

@@ -140,6 +140,51 @@ async function fetchArcgis(
   return (await res.json()) as FeatureCollection;
 }
 
+// Module-scoped cache so we don't re-fetch the stops table per layer request.
+type StopInfo = { lng: number; lat: number; name?: string };
+const stopsCache = new Map<string, Promise<Map<string, StopInfo>>>();
+
+async function loadStopsLookup(
+  cfg: NonNullable<
+    Extract<CategoryDataset, { protocol: "gtfs-rt" }>["stopsLookup"]
+  >,
+): Promise<Map<string, StopInfo>> {
+  const key = `${cfg.domain}/${cfg.datasetId}`;
+  let pending = stopsCache.get(key);
+  if (pending) return pending;
+
+  pending = (async () => {
+    // Socrata requires literal $limit; URL.searchParams percent-encodes $ which 500s.
+    const url = `https://${cfg.domain}/resource/${cfg.datasetId}.json?$limit=5000`;
+    const res = await fetch(url, { next: { revalidate: 86400 } });
+    if (!res.ok) {
+      throw new Error(`Stops lookup ${cfg.datasetId}: ${res.status}`);
+    }
+    const rows = (await res.json()) as Record<string, unknown>[];
+    const map = new Map<string, StopInfo>();
+    for (const r of rows) {
+      const idRaw = r[cfg.idField];
+      const lat = Number(r[cfg.latField]);
+      const lng = Number(r[cfg.lngField]);
+      if (idRaw == null || !Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      const name = cfg.nameField
+        ? (r[cfg.nameField] as string | undefined)
+        : undefined;
+      // Field may be a single id ("123") or CSV ("123,456,A02") for transfer complexes.
+      for (const id of String(idRaw).split(",")) {
+        const trimmed = id.trim();
+        if (trimmed) map.set(trimmed, { lng, lat, name });
+      }
+    }
+    return map;
+  })();
+
+  stopsCache.set(key, pending);
+  // If the load fails, drop the cache so the next request retries.
+  pending.catch(() => stopsCache.delete(key));
+  return pending;
+}
+
 async function fetchGtfsRt(
   ds: Extract<CategoryDataset, { protocol: "gtfs-rt" }>,
 ): Promise<FeatureCollection> {
@@ -148,6 +193,10 @@ async function fetchGtfsRt(
     const key = process.env[ds.apiKeyEnv];
     if (key) headers[ds.apiKeyHeader] = key;
   }
+
+  // Load stops table in parallel with feed fetches if configured.
+  const stopsPromise = ds.stopsLookup ? loadStopsLookup(ds.stopsLookup) : null;
+  const stripSuffix = ds.stopsLookup?.stripDirectionSuffix ?? false;
 
   const allFeatures: GeoJSON.Feature[] = [];
 
@@ -167,12 +216,29 @@ async function fetchGtfsRt(
           new Uint8Array(buffer),
         );
 
+      const stops = stopsPromise ? await stopsPromise : null;
+
       for (const entity of feed.entity) {
         if (ds.entity === "vehicle" && entity.vehicle) {
           const v = entity.vehicle;
           const pos = v.position;
-          const lat = pos?.latitude;
-          const lng = pos?.longitude;
+          let lat = pos?.latitude ?? null;
+          let lng = pos?.longitude ?? null;
+          let stopName: string | undefined;
+
+          // Fallback for tunnel transit (subway): plot at next-stop coords.
+          if ((lat == null || lng == null) && stops && v.stopId) {
+            const lookupId = stripSuffix
+              ? v.stopId.replace(/[NS]$/, "")
+              : v.stopId;
+            const info = stops.get(lookupId);
+            if (info) {
+              lat = info.lat;
+              lng = info.lng;
+              stopName = info.name;
+            }
+          }
+
           if (lat == null || lng == null) continue;
           allFeatures.push({
             type: "Feature",
@@ -186,6 +252,7 @@ async function fetchGtfsRt(
               trip_id: v.trip?.tripId ?? null,
               direction_id: v.trip?.directionId ?? null,
               stop_id: v.stopId ?? null,
+              stop_name: stopName ?? null,
               current_status:
                 v.currentStatus != null
                   ? ["INCOMING_AT", "STOPPED_AT", "IN_TRANSIT_TO"][

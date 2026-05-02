@@ -37,6 +37,20 @@ export type GtfsRtDataset = {
   apiKeyHeader?: string; // header name for API key (e.g. "x-api-key")
   apiKeyEnv?: string; // env var holding the key (e.g. "MTA_API_KEY")
   entity: "vehicle" | "alert" | "trip-update";
+  /**
+   * Fallback for vehicles missing GPS positions (e.g. subway in tunnels).
+   * Looks up coordinates by stop_id from a Socrata stops dataset.
+   */
+  stopsLookup?: {
+    domain: string;
+    datasetId: string;
+    idField: string;
+    latField: string;
+    lngField: string;
+    nameField?: string;
+    /** Strip GTFS-RT direction suffix (N/S) when matching against base stop ids. */
+    stripDirectionSuffix?: boolean;
+  };
 };
 
 export type CategoryDataset =

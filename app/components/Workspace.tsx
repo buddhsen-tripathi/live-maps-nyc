@@ -19,11 +19,16 @@ import type {
   Theme,
 } from "@/lib/categories/types";
 import { CategoryPanel } from "./CategoryPanel";
-import { MapView, type ActiveLayer, type MapHandle } from "./MapView";
+import {
+  MapView,
+  type ActiveLayer,
+  type AgentMarker,
+  type MapHandle,
+} from "./MapView";
 import { ChatPanel } from "./ChatPanel";
 import { SourcesButton } from "./SourcesButton";
 import type { Source } from "@/lib/sources/types";
-import type { MapCommand } from "@/lib/agent/types";
+import type { LayerFilter, MapCommand } from "@/lib/agent/types";
 import { useTheme } from "@/lib/theme";
 
 type ApiCategory = Category & { options: CategoryOption[] };
@@ -49,6 +54,10 @@ export function Workspace() {
   const [categories, setCategories] = useState<ApiCategory[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [active, setActive] = useState<Record<string, ActiveOptions>>({});
+  // Per-layer spatial filter set by the agent ("citi-bikes near Union Square").
+  const [filters, setFilters] = useState<Record<string, LayerFilter>>({});
+  // Transient pins added by the chat agent (e.g. event search results).
+  const [agentMarkers, setAgentMarkers] = useState<AgentMarker[]>([]);
   const [sidebarMode, setSidebarMode] = useState<"browse" | "chat">("browse");
   const mapHandleRef = useRef<MapHandle>(null);
   const appliedCommands = useRef(new Set<string>());
@@ -93,13 +102,21 @@ export function Workspace() {
         popup: cat?.popup,
         refresh: cat?.refresh ?? 0,
         tween: cat?.tween,
+        filter: filters[id],
       };
     });
-  }, [active, categories]);
+  }, [active, categories, filters]);
 
   const toggleCategory = (id: string) => {
     setActive((prev) => {
       if (prev[id]) {
+        // Drop any agent-applied filter when the user manually toggles off.
+        setFilters((f) => {
+          if (!(id in f)) return f;
+          const next = { ...f };
+          delete next[id];
+          return next;
+        });
         const next = { ...prev };
         delete next[id];
         return next;
@@ -132,14 +149,15 @@ export function Workspace() {
       appliedCommands.current.add(toolCallId);
 
       switch (cmd.action) {
-        case "addLayer":
+        case "addLayer": {
+          const willClear = pendingClearRef.current;
           setActive((prev) => {
             // First addLayer of a new agent turn replaces existing layers so
             // the user only sees what the agent surfaced. Subsequent calls
             // within the same turn build on that fresh base.
-            const base = pendingClearRef.current ? {} : prev;
+            const base = willClear ? {} : prev;
             pendingClearRef.current = false;
-            if (base[cmd.categoryId]) return base;
+            if (base[cmd.categoryId] && !cmd.filter) return base;
             const cat = categories.find((c) => c.id === cmd.categoryId);
             const defaults: ActiveOptions = {};
             cat?.options?.forEach((o) => {
@@ -150,16 +168,35 @@ export function Workspace() {
               [cmd.categoryId]: { ...defaults, ...cmd.options },
             };
           });
+          // Apply or clear the spatial filter for this layer in lockstep.
+          setFilters((prev) => {
+            const base = willClear ? {} : prev;
+            if (cmd.filter) return { ...base, [cmd.categoryId]: cmd.filter };
+            // No filter on this addLayer → clear any prior filter for it.
+            if (!(cmd.categoryId in base)) return base;
+            const next = { ...base };
+            delete next[cmd.categoryId];
+            return next;
+          });
           break;
+        }
         case "removeLayer":
           setActive((prev) => {
             const next = { ...prev };
             delete next[cmd.categoryId];
             return next;
           });
+          setFilters((f) => {
+            if (!(cmd.categoryId in f)) return f;
+            const next = { ...f };
+            delete next[cmd.categoryId];
+            return next;
+          });
           break;
         case "removeAllLayers":
           setActive({});
+          setFilters({});
+          setAgentMarkers([]);
           break;
         case "flyTo":
           mapHandleRef.current?.flyTo({
@@ -169,6 +206,26 @@ export function Workspace() {
           break;
         case "fitBounds":
           mapHandleRef.current?.fitBounds(cmd.bounds);
+          break;
+        case "showMarkers": {
+          setAgentMarkers(cmd.markers);
+          if (cmd.fit !== false && cmd.markers.length > 0) {
+            const lngs = cmd.markers.map((m) => m.lng);
+            const lats = cmd.markers.map((m) => m.lat);
+            const sw: [number, number] = [
+              Math.min(...lngs),
+              Math.min(...lats),
+            ];
+            const ne: [number, number] = [
+              Math.max(...lngs),
+              Math.max(...lats),
+            ];
+            mapHandleRef.current?.fitBounds([sw, ne], { padding: 80 });
+          }
+          break;
+        }
+        case "clearMarkers":
+          setAgentMarkers([]);
           break;
       }
     },
@@ -196,7 +253,10 @@ export function Workspace() {
                 onToggle={toggleCategory}
                 onOption={setOption}
                 onClose={() => setSidebarOpen(false)}
-                onClearAll={() => setActive({})}
+                onClearAll={() => {
+                  setActive({});
+                  setFilters({});
+                }}
                 uiTheme={uiTheme}
                 onToggleUiTheme={toggleUiTheme}
               />
@@ -205,6 +265,7 @@ export function Workspace() {
                 onMapCommand={handleMapCommand}
                 onTurnStart={() => {
                   pendingClearRef.current = true;
+                  setAgentMarkers([]);
                 }}
                 onClose={() => setSidebarMode("browse")}
               />
@@ -213,7 +274,12 @@ export function Workspace() {
         </>
       )}
       <div className="relative flex-1">
-        <MapView ref={mapHandleRef} layers={layers} theme={uiTheme} />
+        <MapView
+          ref={mapHandleRef}
+          layers={layers}
+          theme={uiTheme}
+          agentMarkers={agentMarkers}
+        />
         {!sidebarOpen && (
           <button
             type="button"

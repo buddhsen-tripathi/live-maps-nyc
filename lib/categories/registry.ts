@@ -70,6 +70,51 @@ export const CATEGORIES: Category[] = [
     },
   },
   {
+    id: "mta-subway-live",
+    name: "Live MTA Subway",
+    theme: "transit",
+    icon: "TrainSimple",
+    description:
+      "Approximate subway train positions, plotted at each train's next stop. Subway trains have no GPS in tunnels — positions glide between stations.",
+    kind: "points",
+    refresh: 30,
+    tween: { idKey: "trip_id" },
+    datasets: [
+      {
+        protocol: "gtfs-rt",
+        feedUrls: [
+          "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs",
+          "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace",
+          "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm",
+          "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g",
+          "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz",
+          "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw",
+          "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l",
+          "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-si",
+        ],
+        entity: "vehicle",
+        stopsLookup: {
+          domain: "data.ny.gov",
+          datasetId: "5f5g-n3cz",
+          idField: "gtfs_stop_ids",
+          latField: "latitude",
+          lngField: "longitude",
+          nameField: "stop_name",
+          stripDirectionSuffix: true,
+        },
+      },
+    ],
+    paint: { color: "#facc15", radius: 4, haloColor: "#422006" },
+    popup: {
+      title: "Train {route_id}",
+      fields: [
+        { key: "current_status", label: "Status" },
+        { key: "stop_name", label: "Next Stop" },
+        { key: "stop_id", label: "Stop ID" },
+      ],
+    },
+  },
+  {
     id: "citi-bike",
     name: "Citi Bike Stations",
     theme: "transit",

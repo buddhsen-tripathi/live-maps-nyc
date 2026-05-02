@@ -20,6 +20,8 @@ import {
   BankIcon,
   LightningIcon,
   CompassIcon,
+  PersonSimpleRunIcon,
+  UsersIcon,
   type IconProps,
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
@@ -45,6 +47,9 @@ const ICONS: Record<string, PhosphorIcon> = {
   WifiHigh: WifiHighIcon,
   Bank: BankIcon,
   Lightning: LightningIcon,
+  Compass: CompassIcon,
+  PersonSimpleRun: PersonSimpleRunIcon,
+  Users: UsersIcon,
 };
 
 export function Icon({

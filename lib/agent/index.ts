@@ -4,6 +4,8 @@ import { addMapLayer } from "./tools/fetch-layer";
 import { removeMapLayer, flyToLocation } from "./tools/map-control";
 import { fetchDatasetDirect } from "./tools/fetch-dataset-direct";
 import { summarizeFeatures } from "./tools/summarize-features";
+import { searchEvents } from "./tools/search-events";
+import { getDirections } from "./tools/get-directions";
 import { buildSystemPrompt } from "./system-prompt";
 
 export const agentSystemPrompt = buildSystemPrompt();
@@ -16,4 +18,6 @@ export const agentTools = {
   flyToLocation,
   fetchDatasetDirect,
   summarizeFeatures,
+  searchEvents,
+  getDirections,
 };

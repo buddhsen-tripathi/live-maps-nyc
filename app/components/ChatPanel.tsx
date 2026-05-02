@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import {
@@ -11,7 +11,9 @@ import {
   ArrowUpRightIcon,
 } from "@phosphor-icons/react";
 import { ChatMessage } from "./ChatMessage";
+import { Icon } from "./Icon";
 import type { MapCommand } from "@/lib/agent/types";
+import { AGENT_MODES } from "@/lib/agent/modes";
 
 type Props = {
   onMapCommand: (cmd: MapCommand, toolCallId: string) => void;
@@ -20,9 +22,17 @@ type Props = {
   onClose: () => void;
 };
 
-const transport = new DefaultChatTransport({ api: "/api/agent" });
-
-const SUGGESTIONS: { title: string; prompt: string }[] = [
+const SUGGESTIONS: { title: string; prompt: string; badge?: string }[] = [
+  {
+    title: "What's happening in NYC today?",
+    prompt: "What's happening in NYC today? Find events, concerts, exhibits, and markets I shouldn't miss.",
+    badge: "live web",
+  },
+  {
+    title: "Free things to do this weekend",
+    prompt: "Find free events happening in NYC this weekend",
+    badge: "live web",
+  },
   {
     title: "Where can I find a bike near Union Square?",
     prompt: "Show available Citi Bike stations near Union Square",
@@ -33,19 +43,29 @@ const SUGGESTIONS: { title: string; prompt: string }[] = [
   },
   {
     title: "Find community spaces in Williamsburg",
-    prompt:
-      "Find community gardens, libraries, and parks in Williamsburg",
-  },
-  {
-    title: "Live MTA buses near me",
-    prompt: "Show live MTA buses in Manhattan",
+    prompt: "Find community gardens, libraries, and parks in Williamsburg",
   },
 ];
 
 export function ChatPanel({ onMapCommand, onTurnStart, onClose }: Props) {
   const [input, setInput] = useState("");
+  const [selectedMode, setSelectedMode] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Ref mirrors selectedMode so the transport's body fn always reads the latest.
+  const modeRef = useRef<string | null>(null);
+  modeRef.current = selectedMode;
+
+  // Per-mount transport: body fn returns the live mode on each request.
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: "/api/agent",
+        body: () => ({ mode: modeRef.current ?? undefined }),
+      }),
+    [],
+  );
+
   const { messages, sendMessage, status, setMessages } = useChat({
     transport,
   });
@@ -158,6 +178,32 @@ export function ChatPanel({ onMapCommand, onTurnStart, onClose }: Props) {
         onSubmit={handleSubmit}
         className="border-t border-border p-3"
       >
+        {/* Mode picker — biases the agent's persona */}
+        <div className="mb-2 flex flex-wrap gap-1">
+          {AGENT_MODES.map((m) => {
+            const active = selectedMode === m.id;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() =>
+                  setSelectedMode((curr) => (curr === m.id ? null : m.id))
+                }
+                title={m.description}
+                aria-pressed={active}
+                className={[
+                  "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-medium transition-colors",
+                  active
+                    ? "border-accent bg-accent text-accent-foreground"
+                    : "border-border bg-card text-muted-foreground hover:border-border-strong hover:bg-muted hover:text-foreground",
+                ].join(" ")}
+              >
+                <Icon name={m.icon} size={10} weight="bold" />
+                <span>{m.name}</span>
+              </button>
+            );
+          })}
+        </div>
         <div className="flex items-end gap-2 rounded-xl border border-border bg-card px-3 py-2 transition-colors focus-within:border-border-strong focus-within:ring-1 focus-within:ring-ring/40">
           <textarea
             ref={inputRef}
@@ -211,8 +257,15 @@ function EmptyState({ onPick }: { onPick: (text: string) => void }) {
             onClick={() => onPick(s.prompt)}
             className="group flex w-full items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2.5 text-left transition-colors hover:border-border-strong hover:bg-muted"
           >
-            <span className="text-[12.5px] leading-snug text-foreground">
-              {s.title}
+            <span className="flex min-w-0 flex-1 items-center gap-2">
+              <span className="truncate text-[12.5px] leading-snug text-foreground">
+                {s.title}
+              </span>
+              {s.badge && (
+                <span className="shrink-0 rounded bg-accent/15 px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wide text-accent">
+                  {s.badge}
+                </span>
+              )}
             </span>
             <ArrowUpRightIcon
               size={13}

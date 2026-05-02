@@ -16,12 +16,38 @@ export const addMapLayer = tool({
       .record(z.string(), z.union([z.string(), z.boolean()]))
       .optional()
       .describe("Optional filter/toggle values for the category"),
+    nearLng: z
+      .number()
+      .optional()
+      .describe(
+        "Optional longitude. If both nearLng and nearLat are set, the map only shows features within nearRadiusMeters of this point.",
+      ),
+    nearLat: z
+      .number()
+      .optional()
+      .describe(
+        "Optional latitude. Pair with nearLng to spatially filter the layer.",
+      ),
+    nearRadiusMeters: z
+      .number()
+      .optional()
+      .describe(
+        "Search radius in meters (default 800 ≈ a 10-minute walk). Only used when nearLng + nearLat are set.",
+      ),
   }),
-  execute: async ({ categoryId, options }) => {
+  execute: async ({ categoryId, options, nearLng, nearLat, nearRadiusMeters }) => {
     const cat = CATEGORIES_BY_ID.get(categoryId);
     if (!cat) {
       return { added: false, error: `Unknown category: ${categoryId}` };
     }
+
+    const filter =
+      nearLng != null && nearLat != null
+        ? {
+            center: [nearLng, nearLat] as [number, number],
+            radiusMeters: nearRadiusMeters ?? 800,
+          }
+        : undefined;
 
     return {
       added: true,
@@ -29,6 +55,7 @@ export const addMapLayer = tool({
       name: cat.name,
       kind: cat.kind,
       options: options ?? {},
+      filter,
     };
   },
 });
