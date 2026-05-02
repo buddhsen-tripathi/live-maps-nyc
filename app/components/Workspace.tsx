@@ -89,6 +89,7 @@ export function Workspace() {
         options,
         popup: cat?.popup,
         refresh: cat?.refresh ?? 0,
+        tween: cat?.tween,
       };
     });
   }, [active, categories]);
@@ -193,7 +194,7 @@ export function Workspace() {
             ) : (
               <ChatPanel
                 onMapCommand={handleMapCommand}
-                onClose={() => setSidebarOpen(false)}
+                onClose={() => setSidebarMode("browse")}
               />
             )}
           </div>
@@ -212,31 +213,37 @@ export function Workspace() {
             <span>Maps</span>
           </button>
         )}
-        {/* Browse / Chat mode toggle */}
-        <button
-          type="button"
-          onClick={() => {
-            setSidebarMode((m) => (m === "browse" ? "chat" : "browse"));
-            setSidebarOpen(true);
-          }}
-          aria-label={
-            sidebarMode === "browse" ? "Open chat" : "Open map browser"
-          }
-          className="absolute right-3 top-3 z-10 flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface/95 px-2.5 text-[12px] font-medium text-foreground shadow-lg backdrop-blur transition-colors hover:border-border-strong"
-        >
-          {sidebarMode === "browse" ? (
-            <>
-              <ChatCircleDotsIcon size={14} weight="bold" />
-              <span>Chat</span>
-            </>
-          ) : (
-            <>
-              <ListBulletsIcon size={14} weight="bold" />
-              <span>Browse</span>
-            </>
-          )}
-        </button>
-        <SourcesButton sources={sources} />
+        {/* Top-right action cluster: Chat toggle + Sources */}
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setSidebarMode((m) => (m === "browse" ? "chat" : "browse"));
+              setSidebarOpen(true);
+            }}
+            aria-label={
+              sidebarMode === "browse" ? "Open map assistant" : "Open map browser"
+            }
+            className={
+              sidebarMode === "browse"
+                ? "flex h-8 items-center gap-1.5 rounded-md bg-accent px-2.5 text-[12px] font-semibold text-accent-foreground shadow-lg transition-colors hover:opacity-90"
+                : "flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface/95 px-2.5 text-[12px] font-medium text-foreground shadow-lg backdrop-blur transition-colors hover:border-border-strong"
+            }
+          >
+            {sidebarMode === "browse" ? (
+              <>
+                <ChatCircleDotsIcon size={14} weight="fill" />
+                <span>Ask AI</span>
+              </>
+            ) : (
+              <>
+                <ListBulletsIcon size={14} weight="bold" />
+                <span>Browse</span>
+              </>
+            )}
+          </button>
+          <SourcesButton sources={sources} />
+        </div>
       </div>
     </div>
   );

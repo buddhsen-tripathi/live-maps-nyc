@@ -20,6 +20,7 @@ export const CATEGORIES: Category[] = [
     description: "Real-time GPS positions of ~1,900 MTA buses across all boroughs.",
     kind: "points",
     refresh: 30,
+    tween: { idKey: "vehicle_id" },
     datasets: [
       {
         protocol: "gtfs-rt",
@@ -48,6 +49,7 @@ export const CATEGORIES: Category[] = [
     description: "Real-time NYC Ferry vessel positions.",
     kind: "points",
     refresh: 30,
+    tween: { idKey: "vehicle_id" },
     datasets: [
       {
         protocol: "gtfs-rt",

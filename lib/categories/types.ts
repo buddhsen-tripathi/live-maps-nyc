@@ -96,6 +96,14 @@ export type Category = {
   popup?: PopupConfig;
   /** Auto-refresh interval in seconds for live feeds (e.g. 30 for GTFS-RT) */
   refresh?: number;
+  /**
+   * Smoothly animate point positions between refreshes. Requires kind="points"
+   * and a stable per-feature ID property. Defaults to 90% of the refresh interval.
+   */
+  tween?: {
+    idKey: string;
+    durationMs?: number;
+  };
 };
 
 export type Theme = {

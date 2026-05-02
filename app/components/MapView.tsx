@@ -26,6 +26,16 @@ export type ActiveLayer = {
   popup?: PopupConfig;
   /** Auto-refresh interval in seconds (0 = no refresh) */
   refresh: number;
+  /** Tween point positions between refreshes (per-feature ID for matching) */
+  tween?: { idKey: string; durationMs?: number };
+};
+
+type Tween = {
+  fromById: Map<string, [number, number]>;
+  toById: Map<string, [number, number]>;
+  propsById: Map<string, GeoJSON.GeoJsonProperties>;
+  startedAt: number;
+  durationMs: number;
 };
 
 type LayerState = {
@@ -34,6 +44,8 @@ type LayerState = {
   interactiveLayerIds: string[];
   layer: ActiveLayer;
   refreshTimer?: ReturnType<typeof setInterval>;
+  tween?: Tween;
+  rafId?: number;
 };
 
 export type MapHandle = {
@@ -57,14 +69,24 @@ export const MapView = forwardRef<
   const pendingRef = useRef<ActiveLayer[] | null>(null);
   const layersRef = useRef<ActiveLayer[]>(layers);
   layersRef.current = layers;
+  const currentThemeRef = useRef<"light" | "dark">(theme);
+  const pendingThemeRef = useRef<"light" | "dark" | null>(null);
 
   // Mount map + global hover handlers (registered once)
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
+    // Read the actual theme from the DOM (the inline script in layout.tsx sets
+    // it from localStorage before paint). This avoids a flicker if React's
+    // initial state lags behind the persisted preference.
+    const initialTheme = document.documentElement.classList.contains("light")
+      ? "light"
+      : "dark";
+    currentThemeRef.current = initialTheme;
+
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: STYLE_URLS[theme],
+      style: STYLE_URLS[initialTheme],
       center: NYC_CENTER,
       zoom: 11,
       minZoom: 9,
@@ -177,6 +199,24 @@ export const MapView = forwardRef<
 
     map.on("load", () => {
       mapReadyRef.current = true;
+
+      // If theme changed while map was loading, apply the swap now.
+      const pendingTheme = pendingThemeRef.current;
+      pendingThemeRef.current = null;
+      if (pendingTheme && pendingTheme !== currentThemeRef.current) {
+        currentThemeRef.current = pendingTheme;
+        map.setStyle(STYLE_URLS[pendingTheme]);
+        map.once("styledata", () => {
+          syncLayers(
+            map,
+            stateRef.current,
+            interactiveRef.current,
+            layersRef.current,
+          );
+        });
+        return;
+      }
+
       const pending = pendingRef.current;
       pendingRef.current = null;
       if (pending) syncLayers(map, stateRef.current, interactiveRef.current, pending);
@@ -208,18 +248,30 @@ export const MapView = forwardRef<
   // layers, so clear our state and let the layers prop re-sync after load.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReadyRef.current) return;
-    const targetUrl = STYLE_URLS[theme];
-    // Clear refresh timers and in-flight requests; the new style starts blank.
+    if (!map) return;
+
+    // Already showing this theme — nothing to do.
+    if (currentThemeRef.current === theme) return;
+
+    // Map not finished loading yet — defer the swap to the load handler.
+    if (!mapReadyRef.current) {
+      pendingThemeRef.current = theme;
+      return;
+    }
+
+    currentThemeRef.current = theme;
+
+    // Clear refresh timers and in-flight requests; new style starts blank.
     for (const entry of stateRef.current.values()) {
       entry.abort.abort();
       if (entry.refreshTimer) clearInterval(entry.refreshTimer);
+      if (entry.rafId != null) cancelAnimationFrame(entry.rafId);
     }
     stateRef.current.clear();
     interactiveRef.current.clear();
     mapReadyRef.current = false;
 
-    map.setStyle(targetUrl);
+    map.setStyle(STYLE_URLS[theme]);
     map.once("styledata", () => {
       mapReadyRef.current = true;
       syncLayers(map, stateRef.current, interactiveRef.current, layersRef.current);
@@ -283,8 +335,14 @@ function syncLayers(
           const sid = sourceId(layer.id);
           const src = map.getSource(sid) as maplibregl.GeoJSONSource | undefined;
           if (src) {
-            // Source already exists — just update data in place (live refresh).
-            src.setData(body.geojson);
+            // Source already exists — update in place. If the layer opted into
+            // tweening, animate point positions over time instead of snapping.
+            const entry = state.get(layer.id);
+            if (entry && layer.tween && layer.kind === "points") {
+              startTween(src, body.geojson, layer, entry);
+            } else {
+              src.setData(body.geojson);
+            }
           } else {
             const ids = addCategory(map, layer, body.geojson);
             const entry = state.get(layer.id);
@@ -325,6 +383,7 @@ function removeCategory(
   if (entry) {
     entry.abort.abort();
     if (entry.refreshTimer) clearInterval(entry.refreshTimer);
+    if (entry.rafId != null) cancelAnimationFrame(entry.rafId);
     for (const lid of entry.interactiveLayerIds) interactive.delete(lid);
   }
   const sid = sourceId(id);
@@ -462,4 +521,95 @@ function addCategory(
   }
 
   return interactiveIds;
+}
+
+/**
+ * Animate point positions from their previous spots to incoming spots over
+ * `durationMs`. Mid-flight refresh: capture the currently-interpolated position
+ * as the new starting point so movement stays smooth.
+ */
+function startTween(
+  src: maplibregl.GeoJSONSource,
+  next: GeoJSON.FeatureCollection,
+  layer: ActiveLayer,
+  entry: LayerState,
+) {
+  const idKey = layer.tween!.idKey;
+  // Default to 90% of refresh interval so the animation completes just before
+  // the next poll arrives. Cap at 30s so a long refresh doesn't drag forever.
+  const durationMs =
+    layer.tween!.durationMs ??
+    Math.min((layer.refresh || 30) * 900, 30_000);
+
+  const toById = new Map<string, [number, number]>();
+  const propsById = new Map<string, GeoJSON.GeoJsonProperties>();
+  for (const f of next.features) {
+    if (!f.geometry || f.geometry.type !== "Point") continue;
+    const id = f.properties?.[idKey];
+    if (id == null) continue;
+    toById.set(String(id), f.geometry.coordinates as [number, number]);
+    propsById.set(String(id), f.properties);
+  }
+
+  // Build "from" map. Prefer current position from the in-flight tween if any;
+  // otherwise snap (first frame).
+  const prev = entry.tween;
+  const now = performance.now();
+  const fromById = new Map<string, [number, number]>();
+  for (const id of toById.keys()) {
+    if (prev) {
+      const t = Math.min((now - prev.startedAt) / prev.durationMs, 1);
+      const pf = prev.fromById.get(id);
+      const pt = prev.toById.get(id);
+      if (pf && pt) {
+        fromById.set(id, [
+          pf[0] + (pt[0] - pf[0]) * t,
+          pf[1] + (pt[1] - pf[1]) * t,
+        ]);
+      } else if (pt) {
+        fromById.set(id, pt);
+      } else {
+        fromById.set(id, toById.get(id)!); // new vehicle: snap
+      }
+    } else {
+      fromById.set(id, toById.get(id)!); // first refresh after first load
+    }
+  }
+
+  const tween: Tween = {
+    fromById,
+    toById,
+    propsById,
+    startedAt: now,
+    durationMs,
+  };
+  entry.tween = tween;
+  if (entry.rafId != null) cancelAnimationFrame(entry.rafId);
+
+  const tick = () => {
+    if (entry.tween !== tween) return; // superseded
+    const t = Math.min((performance.now() - tween.startedAt) / tween.durationMs, 1);
+    const features: GeoJSON.Feature[] = [];
+    for (const [id, to] of tween.toById) {
+      const from = tween.fromById.get(id) ?? to;
+      features.push({
+        type: "Feature",
+        geometry: {
+          type: "Point",
+          coordinates: [
+            from[0] + (to[0] - from[0]) * t,
+            from[1] + (to[1] - from[1]) * t,
+          ],
+        },
+        properties: tween.propsById.get(id) ?? null,
+      });
+    }
+    src.setData({ type: "FeatureCollection", features });
+    if (t < 1) {
+      entry.rafId = requestAnimationFrame(tick);
+    } else {
+      entry.rafId = undefined;
+    }
+  };
+  entry.rafId = requestAnimationFrame(tick);
 }

@@ -181,6 +181,7 @@ async function fetchGtfsRt(
               coordinates: [lng, lat],
             },
             properties: {
+              vehicle_id: v.vehicle?.id ?? entity.id ?? null,
               route_id: v.trip?.routeId ?? null,
               trip_id: v.trip?.tripId ?? null,
               direction_id: v.trip?.directionId ?? null,
