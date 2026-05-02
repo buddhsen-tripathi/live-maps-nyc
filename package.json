@@ -1,0 +1,48 @@
+{
+  "name": "block-maps",
+  "version": "0.1.0",
+  "description": "Every public NYC map, in one place. Themed meta-maps over NYC Open Data, MTA, FEMA, GBFS, and more.",
+  "license": "MIT",
+  "homepage": "https://maps.nyc.network",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "db:migrate": "bun run scripts/migrate.ts",
+    "db:seed": "bun run scripts/seed.ts",
+    "db:sync": "bun run scripts/sync-catalog.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/react": "^3.0.176",
+    "@neondatabase/serverless": "^1.1.0",
+    "@openrouter/ai-sdk-provider": "^2.9.0",
+    "@phosphor-icons/react": "^2.1.10",
+    "ai": "^6.0.174",
+    "gtfs-realtime-bindings": "^1.1.1",
+    "maplibre-gl": "^5.24.0",
+    "next": "16.2.4",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "server-only": "^0.0.1",
+    "zod": "^4.4.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.4",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  },
+  "ignoreScripts": [
+    "sharp",
+    "unrs-resolver"
+  ],
+  "trustedDependencies": [
+    "sharp",
+    "unrs-resolver"
+  ]
+}
