@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import type { UIMessage } from "ai";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -243,6 +244,17 @@ function ToolBlock({
     return <DirectionsButton result={result} />;
   }
 
+  // Special-case rendering for planTrip — render the trip card
+  if (tool.toolName === "planTrip" && isComplete && result.ok) {
+    return (
+      <TripCard
+        result={result}
+        onMapCommand={onMapCommand}
+        toolCallId={tool.toolCallId}
+      />
+    );
+  }
+
   return <ToolStatusCard tool={tool} isComplete={isComplete} result={result} />;
 }
 
@@ -433,6 +445,121 @@ function DirectionsButton({ result }: { result: Record<string, unknown> }) {
         className="shrink-0 text-muted-foreground transition-colors group-hover:text-accent"
       />
     </a>
+  );
+}
+
+// ── Trip card (planTrip tool) ──────────────────────────────────────────────
+
+type TripPoint = { name: string; lng: number; lat: number };
+type TripMode = {
+  mode: "walking" | "bicycling" | "transit" | "driving";
+  etaMinutes: number;
+  url: string;
+};
+type TripResult = {
+  origin: TripPoint;
+  destination: TripPoint;
+  distanceMeters: number;
+  modes: TripMode[];
+  recommended: TripMode["mode"];
+};
+
+const MODE_META: Record<
+  TripMode["mode"],
+  { label: string; emoji: string }
+> = {
+  walking: { label: "Walk", emoji: "🚶" },
+  bicycling: { label: "Bike", emoji: "🚲" },
+  transit: { label: "Transit", emoji: "🚇" },
+  driving: { label: "Drive", emoji: "🚗" },
+};
+
+function TripCard({
+  result,
+  onMapCommand,
+  toolCallId,
+}: {
+  result: Record<string, unknown>;
+  onMapCommand: (cmd: MapCommand, toolCallId: string) => void;
+  toolCallId: string;
+}) {
+  const trip = result as unknown as TripResult;
+  const fired = useRef(false);
+
+  // On first paint, ask the map to frame both endpoints.
+  useEffect(() => {
+    if (fired.current) return;
+    fired.current = true;
+    const lngs = [trip.origin.lng, trip.destination.lng];
+    const lats = [trip.origin.lat, trip.destination.lat];
+    onMapCommand(
+      {
+        action: "fitBounds",
+        bounds: [
+          [Math.min(...lngs), Math.min(...lats)],
+          [Math.max(...lngs), Math.max(...lats)],
+        ],
+      },
+      `${toolCallId}:fit`,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const km = (trip.distanceMeters / 1000).toFixed(
+    trip.distanceMeters < 1000 ? 2 : 1,
+  );
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="border-b border-border bg-surface/40 px-3 py-2.5">
+        <div className="flex items-center gap-2 text-[12.5px] font-semibold text-foreground">
+          <span className="truncate">{trip.origin.name}</span>
+          <span className="text-muted-foreground">→</span>
+          <span className="truncate">{trip.destination.name}</span>
+        </div>
+        <div className="mt-0.5 text-[10.5px] text-muted-foreground">
+          {km} km · recommended:{" "}
+          <span className="text-accent">
+            {MODE_META[trip.recommended].label.toLowerCase()}
+          </span>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-px bg-border">
+        {trip.modes.map((m) => {
+          const meta = MODE_META[m.mode];
+          const isReco = m.mode === trip.recommended;
+          return (
+            <a
+              key={m.mode}
+              href={m.url}
+              target="_blank"
+              rel="noreferrer"
+              className={[
+                "group flex items-center gap-2 px-3 py-2.5 transition-colors",
+                isReco
+                  ? "bg-accent/10 hover:bg-accent/20"
+                  : "bg-card hover:bg-muted",
+              ].join(" ")}
+            >
+              <span className="text-[16px]">{meta.emoji}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[12px] font-semibold text-foreground">
+                  {meta.label}
+                </span>
+                <span className="block text-[10.5px] text-muted-foreground">
+                  ~{m.etaMinutes} min
+                </span>
+              </span>
+              <ArrowSquareOutIcon
+                size={11}
+                weight="bold"
+                className="shrink-0 text-muted-foreground transition-colors group-hover:text-accent"
+              />
+            </a>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

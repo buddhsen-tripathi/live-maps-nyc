@@ -6,6 +6,7 @@ import { fetchDatasetDirect } from "./tools/fetch-dataset-direct";
 import { summarizeFeatures } from "./tools/summarize-features";
 import { searchEvents } from "./tools/search-events";
 import { getDirections } from "./tools/get-directions";
+import { planTrip } from "./tools/plan-trip";
 import { buildSystemPrompt } from "./system-prompt";
 
 export const agentSystemPrompt = buildSystemPrompt();
@@ -20,4 +21,5 @@ export const agentTools = {
   summarizeFeatures,
   searchEvents,
   getDirections,
+  planTrip,
 };
