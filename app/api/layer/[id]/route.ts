@@ -5,6 +5,7 @@ import {
   filterByKind,
   mergeCollections,
 } from "@/lib/categories/fetchers";
+import { memoize } from "@/lib/cache";
 
 export async function GET(
   req: Request,
@@ -20,27 +21,38 @@ export async function GET(
   const options: Record<string, string | boolean> = {};
   for (const [k, v] of url.searchParams.entries()) options[k] = v;
 
-  const collections = await Promise.all(
-    category.datasets.map((ds) => fetchDataset(ds, options)),
-  );
-
-  const merged = mergeCollections(collections);
-  const filtered = filterByKind(merged, category.kind);
-
-  const res = NextResponse.json({
-    id: category.id,
-    kind: category.kind,
-    paint: category.paint,
-    cluster: category.cluster ?? false,
-    refresh: category.refresh ?? 0,
-    geojson: filtered,
-    count: filtered.features.length,
-  });
-
-  // Live feeds need short cache; static data cached aggressively.
   const isLive = category.datasets.some(
     (d) => d.protocol === "gbfs" || d.protocol === "gtfs-rt",
   );
+  // 30s for live feeds (matches client poll interval), 5min for static.
+  const ttlMs = isLive ? 30_000 : 5 * 60_000;
+
+  // Stable cache key from category id + sorted option entries.
+  const optsKey = Object.entries(options)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${v}`)
+    .join("&");
+  const cacheKey = `layer:${id}:${optsKey}`;
+
+  const payload = await memoize(cacheKey, ttlMs, async () => {
+    const collections = await Promise.all(
+      category.datasets.map((ds) => fetchDataset(ds, options)),
+    );
+    const merged = mergeCollections(collections);
+    const filtered = filterByKind(merged, category.kind);
+    return {
+      id: category.id,
+      kind: category.kind,
+      paint: category.paint,
+      cluster: category.cluster ?? false,
+      refresh: category.refresh ?? 0,
+      geojson: filtered,
+      count: filtered.features.length,
+    };
+  });
+
+  const res = NextResponse.json(payload);
+  // Browser/CDN cache headers — aligned with server-side TTL.
   res.headers.set(
     "Cache-Control",
     isLive

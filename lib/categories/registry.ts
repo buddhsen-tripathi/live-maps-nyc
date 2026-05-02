@@ -336,6 +336,54 @@ export const CATEGORIES: Category[] = [
       ],
     },
   },
+  {
+    id: "public-restrooms",
+    name: "Public Restrooms",
+    theme: "nature",
+    icon: "Toilet",
+    description: "Public restrooms across NYC parks, transit hubs, and civic buildings.",
+    kind: "points",
+    datasets: [{ protocol: "socrata", domain: NYC, id: "i7jb-7jku", limit: 5000 }],
+    paint: { color: "#60a5fa", radius: 4, haloColor: "#0c1f3d" },
+    popup: {
+      title: "facility_name",
+      fields: [
+        { key: "location_type", label: "Type" },
+        { key: "operator", label: "Operator" },
+        { key: "status", label: "Status" },
+        { key: "hours_of_operation", label: "Hours" },
+        { key: "accessibility", label: "Accessibility" },
+        { key: "changing_stations", label: "Changing Stations" },
+      ],
+    },
+  },
+  {
+    id: "drinking-fountains",
+    name: "Drinking Fountains",
+    theme: "nature",
+    icon: "Drop",
+    description: "NYC Parks drinking fountains — handy for runs and hot summer days.",
+    kind: "points",
+    datasets: [
+      {
+        protocol: "socrata",
+        domain: NYC,
+        id: "qnv7-p7a2",
+        limit: 5000,
+        where: "the_geom IS NOT NULL",
+      },
+    ],
+    paint: { color: "#38bdf8", radius: 3, haloColor: "#082f49" },
+    popup: {
+      title: "propertyna",
+      fields: [
+        { key: "featuresta", label: "Status" },
+        { key: "fountainty", label: "Type" },
+        { key: "position", label: "Position" },
+        { key: "decription", label: "Description" },
+      ],
+    },
+  },
 
   // ───────��─ Buildings & Land ─────────
   {

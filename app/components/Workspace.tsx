@@ -52,6 +52,9 @@ export function Workspace() {
   const [sidebarMode, setSidebarMode] = useState<"browse" | "chat">("browse");
   const mapHandleRef = useRef<MapHandle>(null);
   const appliedCommands = useRef(new Set<string>());
+  // Set true when the user submits a new chat prompt; consumed by the first
+  // addLayer command so subsequent adds in the same turn are additive.
+  const pendingClearRef = useRef(false);
   const { theme: uiTheme, toggleTheme: toggleUiTheme } = useTheme();
 
   // True when viewport is below md. Server snapshot is false so SSR renders
@@ -131,14 +134,19 @@ export function Workspace() {
       switch (cmd.action) {
         case "addLayer":
           setActive((prev) => {
-            if (prev[cmd.categoryId]) return prev;
+            // First addLayer of a new agent turn replaces existing layers so
+            // the user only sees what the agent surfaced. Subsequent calls
+            // within the same turn build on that fresh base.
+            const base = pendingClearRef.current ? {} : prev;
+            pendingClearRef.current = false;
+            if (base[cmd.categoryId]) return base;
             const cat = categories.find((c) => c.id === cmd.categoryId);
             const defaults: ActiveOptions = {};
             cat?.options?.forEach((o) => {
               defaults[o.id] = o.default;
             });
             return {
-              ...prev,
+              ...base,
               [cmd.categoryId]: { ...defaults, ...cmd.options },
             };
           });
@@ -188,12 +196,16 @@ export function Workspace() {
                 onToggle={toggleCategory}
                 onOption={setOption}
                 onClose={() => setSidebarOpen(false)}
+                onClearAll={() => setActive({})}
                 uiTheme={uiTheme}
                 onToggleUiTheme={toggleUiTheme}
               />
             ) : (
               <ChatPanel
                 onMapCommand={handleMapCommand}
+                onTurnStart={() => {
+                  pendingClearRef.current = true;
+                }}
                 onClose={() => setSidebarMode("browse")}
               />
             )}

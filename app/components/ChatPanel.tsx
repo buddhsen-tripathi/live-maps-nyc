@@ -15,6 +15,8 @@ import type { MapCommand } from "@/lib/agent/types";
 
 type Props = {
   onMapCommand: (cmd: MapCommand, toolCallId: string) => void;
+  /** Fires when the user submits a new prompt. Lets the host reset map state. */
+  onTurnStart?: () => void;
   onClose: () => void;
 };
 
@@ -40,7 +42,7 @@ const SUGGESTIONS: { title: string; prompt: string }[] = [
   },
 ];
 
-export function ChatPanel({ onMapCommand, onClose }: Props) {
+export function ChatPanel({ onMapCommand, onTurnStart, onClose }: Props) {
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -70,6 +72,7 @@ export function ChatPanel({ onMapCommand, onClose }: Props) {
     const t = text.trim();
     if (!t || isLoading) return;
     setInput("");
+    onTurnStart?.();
     sendMessage({ text: t });
   };
 
